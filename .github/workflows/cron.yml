@@ -1,10 +1,13 @@
 name: Random Cron
+
 on:
   workflow_run:
     workflows: ["刷步数"]
-    types:
-      - completed
+    types: [completed]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   repo-sync:
@@ -12,17 +15,26 @@ jobs:
     timeout-minutes: 3
     if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v3
+      - name: Check PAT existence
+        run: |
+          if [ -z "${{ secrets.PAT }}" ]; then
+            echo "PAT is EMPTY (set Settings -> Secrets -> Actions -> PAT)" && exit 1
+          fi
+
+      - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT }} #此处PAT需要申请，教程详见：README
+          token: ${{ secrets.PAT }}        # 确保 PAT 存在且有 repo 权限
+          fetch-depth: 1
+
       - name: random cron
         run: |
+          set -e
           source cron_convert.sh
           echo "configed CRON_HOURS ${{ vars.CRON_HOURS }}"
           persist_execute_log ${{ github.event_name }} ${{ vars.CRON_HOURS }}
-          git config user.name github-actions
-          git config user.email github-actions@users.noreply.github.com
-          git add .
-          current=`TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S'`
-          git commit -m "[${current}] random cron trigger by ${{ github.event_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          current=$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')
+          git commit -m "[${current}] random cron trigger by ${{ github.event_name }}" || echo "No changes to commit"
           git push origin master
